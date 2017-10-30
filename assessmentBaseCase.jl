@@ -84,11 +84,11 @@ function parse_commandline()
         "day0"
             help = "The first day"
             arg_type = Int
-            default = 1
+            default = 7
         "day1"
             help = "The last day"
             arg_type = Int
-            default = 1
+            default = 7
     end
 
     return parse_args(s)

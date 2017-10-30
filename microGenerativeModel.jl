@@ -20,10 +20,10 @@ end
 
 	days_per_year = weeks_per_year * days_per_week
 	hours_per_week = hours_per_day * days_per_week 
-	Gtype = GeneratorData["Type"]
-	Pmax = Dict(zip(GenLookupData["Type"], [sum(float(safesplit(GenLookupData["Pout"][i]))) for i=1:length(GenLookupData["Pout"])]))
-	GenMaintPeriods = Dict(zip(GenLookupData["Type"], GenLookupData["MaintPeriods"]))
-	PAnnualPeakLoad = PQfactor * AnnualPeakLoadData["Pload"][1]
+	Gtype = GeneratorData[:Type]
+	Pmax = Dict(zip(GenLookupData[:Type], [sum(float(safesplit(GenLookupData[:Pout][i]))) for i=1:length(GenLookupData[:Pout])]))
+	GenMaintPeriods = Dict(zip(GenLookupData[:Type], GenLookupData[:MaintPeriods]))
+	PAnnualPeakLoad = PQfactor * AnnualPeakLoadData[:Pload][1]
 	PHourlyLoad = PAnnualPeakLoad * HourlyLoadFactor	
 	outG = [Int64[] for day=1:days_per_year]
 	G = length(Gtype)
@@ -69,10 +69,10 @@ end
 	hours_per_quarter = round(Int, hours_per_year/4)
 	HHourCap = zeros(Float64, hours_per_year)	
 
-	PAnnualPeakLoad = PQfactor * AnnualPeakLoadData["Pload"][1]
+	PAnnualPeakLoad = PQfactor * AnnualPeakLoadData[:Pload][1]
 	PHourlyLoad = PAnnualPeakLoad * HourlyLoadFactor
-	HQuarterCap = HydroData["QuarterCap"]
-	HQuarterEn = HydroData["QuarterEnergy"]
+	HQuarterCap = HydroData[:QuarterCap]
+	HQuarterEn = HydroData[:QuarterEnergy]
 
 	#initialize first and last hour of the quarter
 	first = 1
@@ -113,10 +113,10 @@ end
 
 	tic()
 
-	PBusLoad = .01 * LoadData["P_PCT"]
-	QBusLoad = .01 * LoadData["Q_PCT"]
-	PAnnualPeakLoad = PQfactor * AnnualPeakLoadData["Pload"][1]
-	QAnnualPeakLoad = PQfactor * AnnualPeakLoadData["Qload"][1]
+	PBusLoad = .01 * LoadData[:P_PCT]
+	QBusLoad = .01 * LoadData[:Q_PCT]
+	PAnnualPeakLoad = PQfactor * AnnualPeakLoadData[:Pload][1]
+	QAnnualPeakLoad = PQfactor * AnnualPeakLoadData[:Qload][1]
 	PHourlyLoad = PAnnualPeakLoad * HourlyLoadFactor
 	QHourlyLoad = QAnnualPeakLoad * HourlyLoadFactor
 
@@ -136,8 +136,8 @@ end
 	Pload = OffsetArray(Array{Float64}, day0:day1)
 	Qload = OffsetArray(Array{Float64}, day0:day1)
 
-	PBusLoad = .01 * LoadData["P_PCT"]
-	QBusLoad = .01 * LoadData["Q_PCT"]
+	PBusLoad = .01 * LoadData[:P_PCT]
+	QBusLoad = .01 * LoadData[:Q_PCT]
 	D = length(PBusLoad)
 
 	#Laurine's method
@@ -185,17 +185,17 @@ end
 	PMCout = OffsetArray(Any, day0:day1)
 	vMCout = OffsetArray(Any, day0:day1)
 
-	Gtype = GeneratorData["Type"]
-	RampDn = Dict(zip(GenLookupData["Type"], GenLookupData["RampDn"]))
-	RampUp = Dict(zip(GenLookupData["Type"], GenLookupData["RampUp"]))
-	MinDnTime = Dict(zip(GenLookupData["Type"], GenLookupData["MinDnTime"]))
-	MinUpTime = Dict(zip(GenLookupData["Type"], GenLookupData["MinUpTime"]))
-	SUCost = Dict(zip(GenLookupData["Type"], GenLookupData["fuelPrice"] .* GenLookupData["SUCost"]))
-	fuelType = Dict(zip(GenLookupData["Type"], GenLookupData["fuelType"]))
-	Pout = Dict(zip(GenLookupData["Type"], [float(safesplit(GenLookupData["Pout"][i])) for i=1:length(GenLookupData["Pout"])]))
-	Cost = Dict(zip(GenLookupData["Type"], GenLookupData["fuelPrice"] .* [float(safesplit(GenLookupData["Cost"][i])) for i=1:length(GenLookupData["Cost"])]))
+	Gtype = GeneratorData[:Type]
+	RampDn = Dict(zip(GenLookupData[:Type], GenLookupData[:RampDn]))
+	RampUp = Dict(zip(GenLookupData[:Type], GenLookupData[:RampUp]))
+	MinDnTime = Dict(zip(GenLookupData[:Type], GenLookupData[:MinDnTime]))
+	MinUpTime = Dict(zip(GenLookupData[:Type], GenLookupData[:MinUpTime]))
+	SUCost = Dict(zip(GenLookupData[:Type], GenLookupData[:fuelPrice] .* GenLookupData[:SUCost]))
+	fuelType = Dict(zip(GenLookupData[:Type], GenLookupData[:fuelType]))
+	Pout = Dict(zip(GenLookupData[:Type], [float(safesplit(GenLookupData[:Pout][i])) for i=1:length(GenLookupData[:Pout])]))
+	Cost = Dict(zip(GenLookupData[:Type], GenLookupData[:fuelPrice] .* [float(safesplit(GenLookupData[:Cost][i])) for i=1:length(GenLookupData[:Cost])]))
 	#set startup and shutdown ramp rates equal to the max generation
-	RampSD = Dict(zip(GenLookupData["Type"], [sum(float(safesplit(GenLookupData["Pout"][i]))) for i=1:length(GenLookupData["Pout"])]))
+	RampSD = Dict(zip(GenLookupData[:Type], [sum(float(safesplit(GenLookupData[:Pout][i]))) for i=1:length(GenLookupData[:Pout])]))
 	RampSU = RampSD	
 
 	G = length(Gtype)
@@ -262,9 +262,9 @@ end
 
 @everywhere function computeHourlyLoadFactor(WeeklyPeakLoadData, DailyPeakLoadData, HourlyPeakLoadData)
 
-	WeeklyPeakLoad = .01 * WeeklyPeakLoadData["PCTLoad"]
-	DailyPeakLoad = .01 * DailyPeakLoadData["PCTLoad"]
-	HourlyPeakLoad = .01 * HourlyPeakLoadData["PCTLoadWinterWeekday"]
+	WeeklyPeakLoad = .01 * WeeklyPeakLoadData[:PCTLoad]
+	DailyPeakLoad = .01 * DailyPeakLoadData[:PCTLoad]
+	HourlyPeakLoad = .01 * HourlyPeakLoadData[:PCTLoadWinterWeekday]
 
 	weeks_per_year = length(WeeklyPeakLoad)
 	days_per_week = length(DailyPeakLoad)
@@ -283,7 +283,7 @@ end
 		        else
 		            season = "Spring"
 		        end
-		        HourlyPeakLoad = .01 * HourlyPeakLoadData["PCTLoad$(season)$(day_type)"]
+		        HourlyPeakLoad = .01 * HourlyPeakLoadData[Symbol("PCTLoad$(season)$(day_type)")]
 		        push!(HourlyLoadFactor, HourlyPeakLoad[hour] * DailyPeakLoad[day] * WeeklyPeakLoad[week])
 		    end
 		end

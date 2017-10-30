@@ -589,10 +589,12 @@ end
     B_tofr = -bl./tr
     B_toto = bl + 0.5*b
 
+    #micro-scenario data
     HCap = MicroData[:HCap]
     Pload = MicroData[:Pload]
     Qload = MicroData[:Qload]
 
+    #DA and RT data
     uDA = fillWithZeros(DAoutcome[:uDAsparse], G, hpd)
     PDA = fillWithZeros(DAoutcome[:PDAsparse], G, hpd)
     PRTdiff0 = fillWithZeros(RToutcome[:PRTdiff0sparse], G, hpd)
@@ -606,25 +608,24 @@ end
         push!(PRTShedc, key => fillWithZeros(value, D, hpd))
     end
 
-
+    #branch availability
     aBranch0 = ones(Int, L)
     aBranch0[outB] = 0
 
-    dt = 15
-
     #populate contingency list
-    contingency_list = [0]
-    #if contingency_kwrd == "N-1"
-    #    contingency_list = collect(0:L)
-    #end
+    if contingency_kwrd == "N"
+        contingency_list = [0]
+    end
+    if contingency_kwrd == "N-1"
+        contingency_list = collect(1:L)
+    end
 
-    #apply preventive acctions
-    ugen_spec = uDA
-    Pgen_spec = PDA + PRTdiff0
-    Pload_spec = Pload - PRTShed0
+    #indices of sync condensers
+    syncs = find([Gtype[g] for g=1:G] .== "SynCond")
 
-
+    #assessment
     assessment = zeros(Float64, hpd)
+    assessment_time = zeros(Float64, hpd)
 
     for cont in contingency_list
 
@@ -640,7 +641,15 @@ end
         aBranch = copy(aBranch0)
         for c in cont
             if c != 0 aBranch[c] = 0 end
-        end
+        end        
+
+        #apply preventive acctions
+        ugen_spec = uDA
+        Pgen_spec = PDA + PRTdiff0
+        Pload_spec = Pload - PRTShed0
+
+        #force sync condensors on
+        ugen_spec[syncs] = 1
 
         #apply corrective actions if any
         if cont in keys(PRTdiffc) 
@@ -650,42 +659,29 @@ end
             Pload_spec -= PRTShedc[cont] 
         end
 
+        #force Pgen_spec within limits
+        for g=1:G, h=1:hpd
+            Pgen_spec[g,h] = (ugen_spec[g,h] == 1)? min(max(Pgen_spec[g,h], Pmin[Gtype[g]]), Pmax[Gtype[g]]) : Pgen_spec[g,h]
+        end
+
+        #check if actions are consistent, i.e. if the total generation is equal to the total load
+        Pgen_tot = sum(Pgen_spec, 1)
+        Pload_tot = sum(Pload_spec, 1)
+        @assert maximum(abs.(Pgen_tot - Pload_tot)) < 5e3
+
         for h=1:1
 #=
-            #select slack generator as the one having the highest available capacity
-            cap_g = [ugen_spec[g,h] * ((fuelType[Gtype[g]] != "Hydro")?Pmax[Gtype[g]]:HCap[h] - Pgen_spec[g,h]) for g=1:G]
-            slack = indmax(cap_g)
-            Pmaxslack = (fuelType[Gtype[slack]] != "Hydro")?Pmax[Gtype[slack]]:HCap[h]
-
-            compute participation factors
-            totalPmax = sum([ugen_spec[g,h] * Pmax[Gtype[g]] for g=1:G])
-            alpha = [ugen_spec[g,h] * Pmax[Gtype[g]] / totalPmax for g=1:G]
-
-=#
-            #modify data for debug test case
-            ugen_spec[:,h] = ones(Float64, G)
-            Pgen_spec[:,h] = [Pmax[Gtype[g]] for g=1:G]
-
-
-            println("Bus data [bus number|gs|bs]")
-            for n=1:N
-                println("$n, $(Bgs[n]), $(Bbs[n])")
-            end
-
             println("Generator data [gen number|real power in pu]")
             for g=1:G
                 if ugen_spec[g,h] == 0 continue end
-                println("$g, $(Pgen_spec[g,h])")
+                println("$g, $(ugen_spec[g,h]), $(Pgen_spec[g,h])")
             end
 
             println("Load data [load number|real pwr demand (pu)|reac. pwr demand (pu)]")
             for d=1:D
                 println("$(Dbusid[d]), $(Pload_spec[d,h]), $(Qload[d,h])")
             end
-
-            slackbus = find(Btype .== "SW")[1]
-            println(slackbus)
-
+=#
 
             tic()
 
@@ -699,23 +695,17 @@ end
             @variable(m, fp_to[1:L])
             @variable(m, fq_fr[1:L])
             @variable(m, fq_to[1:L])
-            @variable(m, DeltaPloss)
 
             for n=1:N
                 setvalue(V[n], 1.0)
                 setvalue(th[n], 0.0)
             end
 
-            @constraint(m, PVSWbusVoltage[n=1:N; Btype[n] != "PQ"], V[n] == Vsp[n])
-            #@constraint(m, SWbusAngle, th[Gbusid[slack]] == 0)
-            @constraint(m, SWbusAngle, th[slackbus] == 0)
-            #@constraint(m, PGenLosses[g=1:G], Pgen[g] == Pgen_spec[g,h] + alpha[g] * DeltaPloss )
-            @constraint(m, PGenLosses[g=1:G; Gbusid[g] != slackbus], Pgen[g] == Pgen_spec[g,h] )
-            #@constraint(m, GenPmin[g=1:G], Pgen[g] >= ugen_spec[g,h] * Pmin[Gtype[g]] )
-            #@constraint(m, GenPmax[g=1:G; fuelType[Gtype[g]] != "Hydro"], Pgen[g] <= ugen_spec[g,h] * Pmax[Gtype[g]] )
-            #@constraint(m, GenPmaxHydro[g=1:G; fuelType[Gtype[g]] == "Hydro"], Pgen[g] <= ugen_spec[g,h] * HCap[h] )
-            #@constraint(m, GenQmin[g=1:G], Qgen[g] >= ugen_spec[g,h] * Qmin[Gtype[g]] )
-            #@constraint(m, GenQmax[g=1:G], Qgen[g] <= ugen_spec[g,h] * Qmax[Gtype[g]] )
+            @constraint(m, SWbusVoltage[n=1:N; Btype[n] == "SW"], V[n] == Vsp[n])
+            @constraint(m, PVbusVoltageMax[n=1:N; Btype[n] == "PV"], V[n] <= Vsp[n] + 1e-5)
+            @constraint(m, PVbusVoltageMin[n=1:N; Btype[n] == "PV"], V[n] >= Vsp[n] - 1e-5)
+            @constraint(m, SWbusAngle[n=1:N; Btype[n] == "SW"], th[n] == 0)
+            @constraint(m, PGenLosses[g=1:G; Btype[Gbusid[g]] != "SW"], Pgen[g] == Pgen_spec[g,h] )
 
             @NLconstraint(m, RealPowerBalance[n=1:N], 
                 sum(Pgen[g] for g in G_n[n]) - (sum(fp_fr[l] for l in Fr_n[n]) + sum(fp_to[l] for l in To_n[n])) - Bgs[n] * V[n]^2 == 
@@ -731,10 +721,14 @@ end
             @NLconstraint(m, ReactiveFlowFromBus[l=1:L], fq_fr[l] - aBranch[l] * (-B_frfr[l] * V[FrBusid[l]]^2 + (G_frto[l] * sin(th[FrBusid[l]] - th[ToBusid[l]]) - B_frto[l] * cos(th[FrBusid[l]] - th[ToBusid[l]])) * V[FrBusid[l]] * V[ToBusid[l]]) == 0 )
             @NLconstraint(m, ReactiveFlowToBus[l=1:L], fq_to[l] - aBranch[l] * (-B_toto[l] * V[ToBusid[l]]^2 + (G_tofr[l] * sin(th[ToBusid[l]] - th[FrBusid[l]]) - B_tofr[l] * cos(th[ToBusid[l]] - th[FrBusid[l]])) * V[ToBusid[l]] * V[FrBusid[l]]) == 0 )
 
-            #@NLconstraint(m, FlowFromPosLim[l=1:L], fp_fr[l]*fp_fr[l] + fq_fr[l]*fq_fr[l] <= fmax[l] * fmax[l] )
-            #@NLconstraint(m, FlowToPosLim[l=1:L], fp_to[l]*fp_to[l] + fq_to[l]*fq_to[l] <= fmax[l] * fmax[l] )
-            #@constraint(m, PQbusVoltageMax[n=1:N; Btype[n] == "PQ"], V[n] <= 1.10)
-            #@constraint(m, PQbusVoltageMin[n=1:N; Btype[n] == "PQ"], V[n] >= 0.90)
+
+            @constraint(m, PQbusVoltageMax[n=1:N; Btype[n] == "PQ"], V[n] <= 1.1)
+            @constraint(m, PQbusVoltageMin[n=1:N; Btype[n] == "PQ"], V[n] >= 0.9)
+            @constraint(m, GenQmin[g=1:G; Btype[Gbusid[g]] != "SW"], Qgen[g] >= ugen_spec[g,h] * Qmin[Gtype[g]] )
+            @constraint(m, GenQmax[g=1:G; Btype[Gbusid[g]] != "SW"], Qgen[g] <= ugen_spec[g,h] * Qmax[Gtype[g]] )
+            @constraint(m, FlowFromPosLim[l=1:L], fp_fr[l]^2 + fq_fr[l]^2 <= fmax[l]^2 )
+            @constraint(m, FlowToPosLim[l=1:L], fp_to[l]^2 + fq_to[l]^2 <= fmax[l]^2 )
+
 
             TT = STDOUT # save original STDOUT stream
             redirect_stdout()
@@ -742,15 +736,21 @@ end
             redirect_stdout(TT) # restore STDOUT
 
             if status == :Optimal
-                println("no violation of limits detected")
-                for g =1:G
-                    println(g, " ", getvalue(Pgen)[g], " ", getvalue(Qgen[g]))
+                println("cont $(cont), hour $(h), no problem detected")
+                for g=1:G
+                    println(ugen_spec[g], " ", Qmin[Gtype[g]], " ", getvalue(Qgen[g]), " ", Qmax[Gtype[g]])
                 end
+                println(maximum(getvalue(V)), " ", minimum(getvalue(V)))
+                assessment_time[h] += toq()
                 continue
             end
 
             #activate load shedding
             println("activating load shedding")
+
+            #compute participation factors
+            totalPmax = sum([ugen_spec[g,h] * Pmax[Gtype[g]] for g=1:G])
+            alpha = [ugen_spec[g,h] * Pmax[Gtype[g]] / totalPmax for g=1:G]
 
             m = Model(solver = IpoptSolver(print_level=0))
 
@@ -764,7 +764,7 @@ end
             @variable(m, fq_to[1:L])
             @variable(m, PloadShed[1:D] >= 0)
             @variable(m, QloadShed[1:D])
-            @variable(m, DeltaPloss)
+            @variable(m, Ploss)
 
             for d=1:D
                 setupperbound(PloadShed[d], Pload_spec[d,h])
@@ -777,21 +777,16 @@ end
 
             @objective(m, Min, sum(PloadShed[d] for d=1:D) ) 
 
-            @constraint(m, PVSWbusVoltage[n=1:N; Btype[n] != "PQ"], V[n] == Vsp[n])
-            @constraint(m, SWbusAngle, th[Gbusid[slack]] == 0)
-            @constraint(m, PGenShed[g=1:G], Pgen[g] == Pgen_spec[g,h] - alpha[g] * (sum(PloadShed[d] for d=1:D) + DeltaPloss) )
-            @constraint(m, GenPmin[g=1:G], Pgen[g] >= ugen_spec[g,h] * Pmin[Gtype[g]] )
-            @constraint(m, GenPmax[g=1:G; fuelType[Gtype[g]] != "Hydro"], Pgen[g] <= ugen_spec[g,h] * Pmax[Gtype[g]] )
-            @constraint(m, GenPmaxHydro[g=1:G; fuelType[Gtype[g]] == "Hydro"], Pgen[g] <= ugen_spec[g,h] * HCap[h] )
-            @constraint(m, GenQmin[g=1:G], Qgen[g] >= ugen_spec[g,h] * Qmin[Gtype[g]] )
-            @constraint(m, GenQmax[g=1:G], Qgen[g] <= ugen_spec[g,h] * Qmax[Gtype[g]] )
+            @constraint(m, SWbusAngle[n=1:N; Btype[n] == "SW"], th[n] == 0)
 
-            @constraint(m, RealPowerBalance[n=1:N], 
-                sum(Pgen[g] for g in G_n[n]) - (sum(fp_fr[l] for l in Fr_n[n]) + sum(fp_to[l] for l in To_n[n])) == 
+            @constraint(m, PGenShed[g=1:G], Pgen[g] == Pgen_spec[g,h] - alpha[g] * (sum(PloadShed[d] for d=1:D) + Ploss) )
+
+            @NLconstraint(m, RealPowerBalance[n=1:N], 
+                sum(Pgen[g] for g in G_n[n]) - (sum(fp_fr[l] for l in Fr_n[n]) + sum(fp_to[l] for l in To_n[n])) - Bgs[n] * V[n]^2 == 
                 sum(Pload_spec[d,h] - PloadShed[d] for d in D_n[n])
                 ) 
-            @constraint(m, ReactivePowerBalance[n=1:N], 
-                sum(Qgen[g] for g in G_n[n]) - (sum(fq_fr[l] for l in Fr_n[n]) + sum(fq_to[l] for l in To_n[n])) == 
+            @NLconstraint(m, ReactivePowerBalance[n=1:N], 
+                sum(Qgen[g] for g in G_n[n]) - (sum(fq_fr[l] for l in Fr_n[n]) + sum(fq_to[l] for l in To_n[n])) + Bbs[n] * V[n]^2 == 
                 sum(Qload[d,h] - QloadShed[d] for d in D_n[n])
                 )
 
@@ -800,10 +795,16 @@ end
             @NLconstraint(m, ReactiveFlowFromBus[l=1:L], fq_fr[l] - aBranch[l] * (-B_frfr[l] * V[FrBusid[l]]^2 + (G_frto[l] * sin(th[FrBusid[l]] - th[ToBusid[l]]) - B_frto[l] * cos(th[FrBusid[l]] - th[ToBusid[l]])) * V[FrBusid[l]] * V[ToBusid[l]]) == 0 )
             @NLconstraint(m, ReactiveFlowToBus[l=1:L], fq_to[l] - aBranch[l] * (-B_toto[l] * V[ToBusid[l]]^2 + (G_tofr[l] * sin(th[ToBusid[l]] - th[FrBusid[l]]) - B_tofr[l] * cos(th[ToBusid[l]] - th[FrBusid[l]])) * V[ToBusid[l]] * V[FrBusid[l]]) == 0 )
 
-            @NLconstraint(m, FlowFromPosLim[l=1:L], fp_fr[l]*fp_fr[l] + fq_fr[l]*fq_fr[l] <= fmax[l] * fmax[l] )
-            @NLconstraint(m, FlowToPosLim[l=1:L], fp_to[l]*fp_to[l] + fq_to[l]*fq_to[l] <= fmax[l] * fmax[l] )
-            @constraint(m, PQbusVoltageMax[n=1:N; Btype[n] == "PQ"], V[n] <= 1.10)
-            @constraint(m, PQbusVoltageMin[n=1:N; Btype[n] == "PQ"], V[n] >= 0.90)
+
+            @constraint(m, VoltageMax[n=1:N], V[n] <= 1.05)
+            @constraint(m, VoltageMin[n=1:N], V[n] >= 0.95)
+            @constraint(m, GenPmin[g=1:G], Pgen[g] >= ugen_spec[g,h] * Pmin[Gtype[g]] )
+            @constraint(m, GenPmax[g=1:G; fuelType[Gtype[g]] != "Hydro"], Pgen[g] <= ugen_spec[g,h] * Pmax[Gtype[g]] )
+            @constraint(m, GenPmaxHydro[g=1:G; fuelType[Gtype[g]] == "Hydro"], Pgen[g] <= ugen_spec[g,h] * HCap[h] )
+            @constraint(m, GenQmin[g=1:G], Qgen[g] >= ugen_spec[g,h] * Qmin[Gtype[g]] )
+            @constraint(m, GenQmax[g=1:G], Qgen[g] <= ugen_spec[g,h] * Qmax[Gtype[g]] )
+            @constraint(m, FlowFromPosLim[l=1:L], fp_fr[l]^2 + fq_fr[l]^2 <= fmax[l]^2 )
+            @constraint(m, FlowToPosLim[l=1:L], fp_to[l]^2 + fq_to[l]^2 <= fmax[l]^2 )
 
             TT = STDOUT # save original STDOUT stream
             redirect_stdout()
@@ -812,18 +813,22 @@ end
 
             if status == :Optimal
                 assessment[h] += prob * sum(VoLL .* (100 * getvalue(PloadShed)))
+                assessment_time[h] += toq()
+                println("cont $(cont), hour $(h), problem solved with minimal load-shedding, cost = $(prob * sum(VoLL .* (100 * getvalue(PloadShed))))")
                 continue
             end
 
             #shed all load
+            println("cont $(cont), hour $(h), problem solved with full load-shedding, cost = $(prob * sum(VoLL .* (100 * Pload_spec[:,h])))")
             assessment[h] += prob * sum(VoLL .* (100 * Pload_spec[:,h]))
+            assessment_time[h] += toq()
 
         end
 
     end 
 
 
-    return assessment
+    return assessment, assessment_time
 
 end
 
@@ -863,6 +868,14 @@ end
 
     DAoutcome, RToutcome = readOrComputeOutageOutcome(path, s, day, outB)
 
+    NassessOutcome = nothing #readAssessOutcome(path, s, day, outB, "N")
+    if NassessOutcome == nothing
+        NetworkData = readNetworkData(path)
+        MicroData = readMicroData(path, s, day)
+        Nminus1AssessOutcome = assessmentProxy(NetworkData, MicroData, outB, DAoutcome, RToutcome, "N")
+        #writeAssessOutcome(path, s, day, outB, Nminus1AssessOutcome)
+    end
+#=
     Nminus1AssessOutcome = nothing #readAssessOutcome(path, s, day, outB, "N-1")
     if Nminus1AssessOutcome == nothing
         NetworkData = readNetworkData(path)
@@ -870,9 +883,9 @@ end
         Nminus1AssessOutcome = assessmentProxy(NetworkData, MicroData, outB, DAoutcome, RToutcome, "N-1")
         #writeAssessOutcome(path, s, day, outB, Nminus1AssessOutcome)
     end
+=#
 
 
-
-    return RToutcome, DAoutcome, Nminus1AssessOutcome #, CMNminus2AssessOutcome
+    return RToutcome, DAoutcome #, NassessOutcome, Nminus1AssessOutcome, CMNminus2AssessOutcome
 
 end

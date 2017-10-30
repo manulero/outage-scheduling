@@ -10,11 +10,7 @@ include("./microGenerativeModel.jl")
 
 function generateMicroscenarios(day0, day1, s0, s1, M, NbOfCPUs, NbOfNodes, path)
 
-    if NbOfNodes == 0
-        addprocs(M)
-    else
-        addprocs(SlurmManager(M), cpus_per_task=NbOfCPUs, nodes=NbOfNodes, time="2-00:00:00", mem_per_cpu=2000, exclude="node[120-128]")
-    end
+    addprocs(M)
     M = nworkers()
 
     #these includes come after addprocs() so files are loaded on all processes
@@ -45,16 +41,19 @@ function parse_commandline()
         "path"
             help = "the path to the folder with the system specification files"
             arg_type = AbstractString
+            default = "./data/IEEE-RTS96"
         "M"
             help = "Number of tasks"
             arg_type = Int
-            default = 2
+            default = 1
         "NbOfCPUs"
             help = "Number of CPUs per task"
             arg_type = Int
+            default = 0
         "NbOfNodes"
             help = "Number of nodes"
             arg_type = Int
+            default = 0
         "s0"
             help = "The first micro-scenario"
             arg_type = Int
@@ -62,7 +61,7 @@ function parse_commandline()
         "s1"
             help = "The last micro-scenario"
             arg_type = Int
-            default = 128
+            default = 4
         "day0"
             help = "The first day"
             arg_type = Int
@@ -70,7 +69,7 @@ function parse_commandline()
         "day1"
             help = "The last day"
             arg_type = Int
-            default = 182
+            default = 7
     end
 
     return parse_args(s)
