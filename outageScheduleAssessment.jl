@@ -1,7 +1,4 @@
-#!~/Downloads/julia-0.4.5/usr/bin/julia
 
-
-using ClusterManagers
 using OffsetArrays
 using ArgParse
 
@@ -10,13 +7,10 @@ include("./STproxies.jl")
 
 
 
-function outageScheduleAssessment(path, filesch, s0, s1, day0, day1, M, NbOfCPUs, NbOfNodes)
+function outageScheduleAssessment(path, filesch, s0, s1, day0, day1, M)
 
-    if NbOfNodes > 0
-	   addprocs(SlurmManager(M), cpus_per_task=NbOfCPUs, nodes=NbOfNodes, time="2-00:00:00", mem_per_cpu=4000, exclude="node[120-128]")
-    else
-        addprocs(M)
-    end
+    addprocs(M)
+
     #these includes come after addprocs() so files are loaded on all processes
     include("./dataInputOutput.jl")
     include("./STproxies.jl")
@@ -98,14 +92,6 @@ function parse_commandline()
             help = "Number of tasks"
             arg_type = Int
             default = 4
-        "NbOfCPUs"
-            help = "Number of CPUs per task"
-            arg_type = Int
-            default = 0
-        "NbOfNodes"
-            help = "Number of nodes"
-            arg_type = Int
-            default = 0
         "s0"
             help = "The first micro-scenario"
             arg_type = Int
@@ -138,15 +124,13 @@ function main()
 	path = parsed_args["path"]
 	filesch = parsed_args["filesch"]
 	M = parsed_args["M"]
-	NbOfCPUs = parsed_args["NbOfCPUs"]
-	NbOfNodes = parsed_args["NbOfNodes"]
 	s0 = parsed_args["s0"]
 	s1 = parsed_args["s1"]
 	day0 = parsed_args["day0"]
 	day1 = parsed_args["day1"]
 
 
-	outageScheduleAssessment(path, filesch, s0, s1, day0, day1, M, NbOfCPUs, NbOfNodes)
+	outageScheduleAssessment(path, filesch, s0, s1, day0, day1, M)
 
 end
 
