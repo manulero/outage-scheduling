@@ -1,14 +1,13 @@
 #!~/Downloads/julia-0.4.5/usr/bin/julia
 
 using ArgParse
-using ClusterManagers
 using OffsetArrays
 
 include("./dataInputOutput.jl")
 include("./microGenerativeModel.jl")
 
 
-function generateMicroscenarios(day0, day1, s0, s1, M, NbOfCPUs, NbOfNodes, path)
+function generateMicroscenarios(day0, day1, s0, s1, M, path)
 
     addprocs(M)
     M = nworkers()
@@ -46,14 +45,6 @@ function parse_commandline()
             help = "Number of tasks"
             arg_type = Int
             default = 1
-        "NbOfCPUs"
-            help = "Number of CPUs per task"
-            arg_type = Int
-            default = 0
-        "NbOfNodes"
-            help = "Number of nodes"
-            arg_type = Int
-            default = 0
         "s0"
             help = "The first micro-scenario"
             arg_type = Int
@@ -85,15 +76,13 @@ function main()
 
     path = parsed_args["path"]
     M = parsed_args["M"]
-    NbOfCPUs = parsed_args["NbOfCPUs"]
-    NbOfNodes = parsed_args["NbOfNodes"]
     s0 = parsed_args["s0"]
     s1 = parsed_args["s1"]
     day0 = parsed_args["day0"]
     day1 = parsed_args["day1"]
 
 
-    generateMicroscenarios(day0, day1, s0, s1, M, NbOfCPUs, NbOfNodes, path)
+    generateMicroscenarios(day0, day1, s0, s1, M, path)
 
 end
 
